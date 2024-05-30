@@ -18,8 +18,7 @@ fn main() {
     let mut client = Client::new(orders);
 
     // Conectar al servidor de la heladería
-    let mut stream =
-        TcpStream::connect("localhost:3000").expect("Could not connect to ice cream shop");
+    let stream = TcpStream::connect("localhost:3000").expect("Could not connect to ice cream shop");
 
     println!("Successfully connected to the ice cream shop!");
 
@@ -47,11 +46,19 @@ fn main() {
         let order_json = format!("{}\n", order_json);
 
         // Enviar la orden al servidor de la heladería
-        stream
+        reader
+            .get_mut()
             .write_all(order_json.as_bytes())
             .expect("Failed to send order");
 
         println!("Order placed: {} of {}", order.quantity, order.flavor);
+
+        // Esperar una respuesta del servidor
+        let mut response = String::new();
+        reader
+            .read_line(&mut response)
+            .expect("Failed to read response");
+        println!("Received response: {}", response.trim());
     }
 
     println!("All orders have been successfully placed!");
