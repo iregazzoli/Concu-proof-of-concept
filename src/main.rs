@@ -7,51 +7,38 @@ use std::io::prelude::*;
 use std::net::TcpStream;
 
 fn main() {
-    let orders_file_path = get_orders_file_path();
-    let mut client = setup_client(&orders_file_path);
-    let stream = connect_to_server();
-    let mut reader = std::io::BufReader::new(&stream);
-
-    let client_id = read_client_id(&mut reader);
-    client.assign_id_to_orders(Some(client_id));
-
-    process_orders(&mut client, &mut reader);
-    println!("All orders have been successfully placed!");
-}
-
-fn get_orders_file_path() -> String {
     let args: Vec<String> = env::args().collect();
     if args.len() != 2 {
         eprintln!("Usage: {} <orders_file_name>", args[0]);
         std::process::exit(1);
     }
     let orders_file_name = &args[1];
-    format!("orders/{}", orders_file_name)
+    let orders_file_path = format!("orders/{}", orders_file_name);
+
+    let mut client = Client::new(Client::load_orders_from_file(&orders_file_path));
+    let stream = connect_to_server();
+    let mut reader = std::io::BufReader::new(&stream);
+
+    let client_id = read_client_id(&mut reader) as u32;
+    client.assign_id_to_orders(Some(client_id));
+
+    wait_for_ice_cream_maker(&mut reader);
+    process_orders(&mut client, &mut reader);
+    println!("All orders have been successfully placed!");
+
+    // Close the stream to disconnect
+    drop(stream);
 }
 
-fn setup_client(orders_file_path: &str) -> Client {
-    let orders = Client::load_orders_from_file(orders_file_path);
-    Client::new(orders)
-}
-
-fn connect_to_server() -> TcpStream {
-    let mut stream =
-        TcpStream::connect("localhost:3000").expect("Could not connect to ice cream shop");
-    stream
-        .write_all(b"CLIENTE\n")
-        .expect("Failed to send client type");
-    stream
-}
-
-fn read_client_id(reader: &mut std::io::BufReader<&TcpStream>) -> u32 {
-    let mut id_message = String::new();
-    reader
-        .read_line(&mut id_message)
-        .expect("Failed to read client ID");
-    id_message
-        .trim()
-        .parse()
-        .expect("Failed to parse client ID")
+fn wait_for_ice_cream_maker(reader: &mut std::io::BufReader<&TcpStream>) {
+    println!("Waiting to be served");
+    let mut response = String::new();
+    while response.trim() != "HELADERO CONNECTED" {
+        reader
+            .read_line(&mut response)
+            .expect("Failed to read response");
+    }
+    println!("Ice cream maker connected");
 }
 
 fn process_orders(client: &mut Client, reader: &mut std::io::BufReader<&TcpStream>) {
@@ -77,4 +64,27 @@ fn wait_for_response(reader: &mut std::io::BufReader<&TcpStream>) {
         .read_line(&mut response)
         .expect("Failed to read response");
     println!("Received response: {}", response.trim());
+}
+
+fn connect_to_server() -> TcpStream {
+    let server_address = "127.0.0.1:3000";
+    let mut stream = TcpStream::connect(server_address).expect("Could not connect to server");
+
+    // Send the client type to the server
+    stream
+        .write_all(b"CLIENTE\n")
+        .expect("Failed to send client type to server");
+
+    stream
+}
+
+fn read_client_id(reader: &mut std::io::BufReader<&TcpStream>) -> usize {
+    let mut response = String::new();
+    reader
+        .read_line(&mut response)
+        .expect("Failed to read response");
+    response
+        .trim()
+        .parse::<usize>()
+        .expect("Failed to parse client ID")
 }
