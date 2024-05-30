@@ -2,7 +2,7 @@ mod ice_cream;
 mod ice_cream_shop;
 
 use actix::prelude::*;
-use ice_cream_shop::{AddIceCream, AddOrder, IceCreamShop};
+use ice_cream_shop::{AddClient, AddIceCream, IceCreamShop};
 use serde_json::from_slice;
 use shared::order::Order;
 use std::net::SocketAddr;
@@ -76,52 +76,25 @@ async fn start_server(ice_cream_shop: Addr<IceCreamShop>) {
 
 async fn handle_client(
     ice_cream_shop: &Addr<IceCreamShop>,
-    reader: &mut BufReader<TcpStream>,
+    _reader: &mut BufReader<TcpStream>,
     addr: SocketAddr,
     client_id: usize,
 ) {
-    let mut line = String::new();
-    while reader.read_line(&mut line).await.unwrap() > 0 {
-        match from_slice::<Order>(line.trim().as_bytes()) {
-            Ok(order) => {
-                println!(
-                    "[{:?}] Received order: {} of {} from client {}",
-                    addr, order.quantity, order.flavor, client_id
-                );
+    println!("[{:?}] Client {} connected", addr, client_id);
 
-                let res = ice_cream_shop.send(AddOrder { order }).await;
-                match res {
-                    Ok(_) => {
-                        println!(
-                            "[{:?}] Order from client {} enqueue successfully \n",
-                            addr, client_id
-                        );
-                        let response = "Order processed successfully\n";
-                        reader
-                            .get_mut()
-                            .write_all(response.as_bytes())
-                            .await
-                            .unwrap();
-                    }
-                    Err(_) => {
-                        println!(
-                            "[{:?}] Failed to process order from client {} \n",
-                            addr, client_id
-                        );
-                        let response = "Failed to process order\n";
-                        reader
-                            .get_mut()
-                            .write_all(response.as_bytes())
-                            .await
-                            .unwrap();
-                    }
-                }
-            }
-            Err(e) => {
-                println!("[{:?}] Failed to deserialize order: {}", addr, e);
-            }
+    // Enqueue the client
+    let res = ice_cream_shop
+        .send(AddClient {
+            client_id: client_id.to_string(),
+        })
+        .await;
+    match res {
+        Ok(_) => {
+            println!("[{:?}] Client {} enqueued successfully \n", addr, client_id);
         }
-        line.clear();
+        Err(_) => {
+            println!("[{:?}] Failed to enqueue client {} \n", addr, client_id);
+        }
     }
 }
 
@@ -130,5 +103,5 @@ async fn handle_ice_cream_maker(
     reader: &mut BufReader<TcpStream>,
     addr: SocketAddr,
 ) {
-    // TODO: Implement ice cream maker handling
+    //TODO implemente later
 }
