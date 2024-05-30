@@ -72,14 +72,32 @@ async fn main() {
 
                     let res = ice_cream_shop.send(AddOrder { order }).await;
                     match res {
-                        Ok(_) => println!(
-                            "[{:?}] Order from client {} enqueue successfully \n",
-                            addr, client_id
-                        ),
-                        Err(_) => println!(
-                            "[{:?}] Failed to process order from client {} \n",
-                            addr, client_id
-                        ),
+                        Ok(_) => {
+                            println!(
+                                "[{:?}] Order from client {} enqueue successfully \n",
+                                addr, client_id
+                            );
+                            // Enviar una respuesta al cliente
+                            let response = "Order processed successfully\n";
+                            reader
+                                .get_mut()
+                                .write_all(response.as_bytes())
+                                .await
+                                .unwrap();
+                        }
+                        Err(_) => {
+                            println!(
+                                "[{:?}] Failed to process order from client {} \n",
+                                addr, client_id
+                            );
+                            // Enviar una respuesta al cliente
+                            let response = "Failed to process order\n";
+                            reader
+                                .get_mut()
+                                .write_all(response.as_bytes())
+                                .await
+                                .unwrap();
+                        }
                     }
                 }
                 Err(e) => {
