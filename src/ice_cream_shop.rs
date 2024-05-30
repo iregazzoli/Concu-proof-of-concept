@@ -1,21 +1,20 @@
-use crate::ice_cream::IceCream;
+use crate::ice_cream::{IceCream, RequestFlavor};
 use actix::prelude::*;
+use shared::order::Order;
 use std::collections::HashMap;
 use std::collections::VecDeque;
 
 pub struct IceCreamShop {
     ice_creams: HashMap<String, Addr<IceCream>>,
-    waiting_clients: VecDeque<String>,
-    waiting_workers: VecDeque<String>,
+    orders: VecDeque<Order>,
 }
 
 impl IceCreamShop {
-    #[allow(dead_code)]
+    #[allow(dead_code)] //pongo esto pq rust es imbecil y piensa q no lo uso a pesar de q lo hago en otro archivo, esta materia deberia ser en c++ y no en este lenguaje inutil.
     pub fn new() -> Self {
         IceCreamShop {
             ice_creams: HashMap::new(),
-            waiting_clients: VecDeque::new(),
-            waiting_workers: VecDeque::new(),
+            orders: VecDeque::new(),
         }
     }
 }
@@ -28,18 +27,11 @@ impl Actor for IceCreamShop {
     }
 }
 
-// ... Rest of the IceCream related code ...
-
 #[derive(Message)]
-#[rtype(result = "()")]
-pub struct AddClient {
-    pub client_id: String,
-}
-
-#[derive(Message)]
-#[rtype(result = "()")]
-pub struct AddWorker {
-    pub worker_id: String,
+#[rtype(result = "Result<u32, &'static str>")]
+pub struct RequestIceCream {
+    pub flavor: String,
+    pub quantity: u32,
 }
 
 #[derive(Message)]
@@ -47,6 +39,31 @@ pub struct AddWorker {
 pub struct AddIceCream {
     pub flavor: String,
     pub quantity: u32,
+}
+
+impl Handler<RequestIceCream> for IceCreamShop {
+    type Result = ResponseFuture<Result<u32, &'static str>>;
+
+    fn handle(&mut self, msg: RequestIceCream, _ctx: &mut Self::Context) -> Self::Result {
+        if let Some(ice_cream) = self.ice_creams.get(&msg.flavor) {
+            let ice_cream = ice_cream.clone();
+            let res = async move {
+                match ice_cream
+                    .send(RequestFlavor {
+                        quantity: msg.quantity,
+                    })
+                    .await
+                {
+                    Ok(Ok(quantity)) => Ok(quantity),
+                    Ok(Err(_)) => Err("Ice cream flavor is out of stock"),
+                    Err(_) => Err("Error occurred while processing the request"),
+                }
+            };
+            Box::pin(res)
+        } else {
+            Box::pin(async { Err("Flavor not found") })
+        }
+    }
 }
 
 impl Handler<AddIceCream> for IceCreamShop {
@@ -58,33 +75,28 @@ impl Handler<AddIceCream> for IceCreamShop {
     }
 }
 
-impl Handler<AddClient> for IceCreamShop {
+#[derive(Message)]
+#[rtype(result = "()")]
+pub struct AddOrder {
+    pub order: Order,
+}
+
+#[derive(Message)]
+#[rtype(result = "Option<Order>")]
+pub struct RemoveOrder;
+
+impl Handler<AddOrder> for IceCreamShop {
     type Result = ();
 
-    fn handle(&mut self, msg: AddClient, _ctx: &mut Self::Context) {
-        self.waiting_clients.push_back(msg.client_id);
-        self.match_clients_and_workers();
+    fn handle(&mut self, msg: AddOrder, _ctx: &mut Self::Context) {
+        self.orders.push_back(msg.order);
     }
 }
 
-impl Handler<AddWorker> for IceCreamShop {
-    type Result = ();
+impl Handler<RemoveOrder> for IceCreamShop {
+    type Result = Option<Order>;
 
-    fn handle(&mut self, msg: AddWorker, _ctx: &mut Self::Context) {
-        self.waiting_workers.push_back(msg.worker_id);
-        self.match_clients_and_workers();
-    }
-}
-
-impl IceCreamShop {
-    fn match_clients_and_workers(&mut self) {
-        while let (Some(client_id), Some(worker_id)) = (
-            self.waiting_clients.pop_front(),
-            self.waiting_workers.pop_front(),
-        ) {
-            // Here you would need to send a message to the worker with the client_id
-            // The worker would then establish a connection with the client using the client_id
-            // The specifics of how this is done would depend on how you're managing network connections
-        }
+    fn handle(&mut self, _msg: RemoveOrder, _ctx: &mut Self::Context) -> Self::Result {
+        self.orders.pop_front()
     }
 }
