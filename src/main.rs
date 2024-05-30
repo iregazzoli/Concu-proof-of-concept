@@ -22,8 +22,8 @@ fn main() {
     let client_id = read_client_id(&mut reader) as u32;
     client.assign_id_to_orders(Some(client_id));
 
-    wait_for_ice_cream_maker(&mut reader);
     process_orders(&mut client, &mut reader);
+    wait_for_ice_cream_maker(&mut reader);
     println!("All orders have been successfully placed!");
 
     // Close the stream to disconnect
@@ -31,7 +31,7 @@ fn main() {
 }
 
 fn wait_for_ice_cream_maker(reader: &mut std::io::BufReader<&TcpStream>) {
-    println!("Waiting to be served");
+    println!("\nWaiting to be served 🍦\n");
     let mut response = String::new();
     while response.trim() != "HELADERO CONNECTED" {
         reader
