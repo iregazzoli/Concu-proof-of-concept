@@ -1,0 +1,15 @@
+[
+  {
+    "flavor": "vainilla",
+    "quantity": 5
+  },
+  {
+    "flavor": "chocolate",
+    "quantity": 1
+  }
+  ,
+  {
+    "flavor": "menta",
+    "quantity": 5
+  }
+]
