@@ -14,8 +14,7 @@ fn main() {
     }
     let orders_file_name = &args[1];
     let orders_file_path = format!("orders/{}", orders_file_name);
-    let mut orders = Client::load_orders_from_file(&orders_file_path);
-    orders.reverse(); // Reverse the orders to use pop for getting the first order
+    let orders = Client::load_orders_from_file(&orders_file_path);
     let mut client = Client::new(orders);
 
     // Conectar al servidor de la heladería
@@ -23,6 +22,22 @@ fn main() {
         TcpStream::connect("localhost:3000").expect("Could not connect to ice cream shop");
 
     println!("Successfully connected to the ice cream shop!");
+
+    // Crear un BufReader para el stream
+    let mut reader = std::io::BufReader::new(&stream);
+
+    // Leer el ID del cliente del servidor
+    let mut id_message = String::new();
+    reader
+        .read_line(&mut id_message)
+        .expect("Failed to read client ID");
+    let client_id: u32 = id_message
+        .trim()
+        .parse()
+        .expect("Failed to parse client ID");
+
+    // Asignar el ID del cliente a todas las órdenes
+    client.assign_id_to_orders(Some(client_id));
 
     while let Some(order) = client.place_order() {
         // Serializar la orden a JSON
