@@ -35,7 +35,12 @@ fn setup_client(orders_file_path: &str) -> Client {
 }
 
 fn connect_to_server() -> TcpStream {
-    TcpStream::connect("localhost:3000").expect("Could not connect to ice cream shop")
+    let mut stream =
+        TcpStream::connect("localhost:3000").expect("Could not connect to ice cream shop");
+    stream
+        .write_all(b"CLIENTE\n")
+        .expect("Failed to send client type");
+    stream
 }
 
 fn read_client_id(reader: &mut std::io::BufReader<&TcpStream>) -> u32 {
