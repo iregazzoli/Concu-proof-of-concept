@@ -2,8 +2,8 @@ mod ice_cream;
 mod ice_cream_shop;
 
 use actix::prelude::*;
-use ice_cream_shop::{AddIceCream, AddOrder, GetClient, IceCreamShop, RemoveOrder};
-use serde_json::{from_slice, to_string};
+use ice_cream_shop::{AddIceCream, AddOrder, IceCreamShop, RemoveOrder};
+use serde_yaml;
 use shared::order::Order;
 use std::net::SocketAddr;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -56,12 +56,6 @@ async fn start_server(ice_cream_shop: Addr<IceCreamShop>) {
                 println!("[{:?}] Client connected", addr);
                 let client_id = next_client_id;
                 next_client_id += 1;
-                let id_message = format!("{}\n", client_id);
-                reader
-                    .get_mut()
-                    .write_all(id_message.as_bytes())
-                    .await
-                    .unwrap();
                 tokio::spawn(async move {
                     handle_client(&ice_cream_shop, &mut reader, addr, client_id).await;
                 });
@@ -83,12 +77,20 @@ async fn handle_client(
     ice_cream_shop: &Addr<IceCreamShop>,
     reader: &mut BufReader<TokioTcpStream>,
     addr: SocketAddr,
-    client_id: usize,
+    client_id: u32,
 ) {
     let mut line = String::new();
     while reader.read_line(&mut line).await.unwrap() > 0 {
-        match from_slice::<Order>(line.trim().as_bytes()) {
-            Ok(order) => {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() == 2 {
+            let flavor = parts[0].to_string();
+            if let Ok(quantity) = parts[1].parse::<u32>() {
+                let order = Order {
+                    id: client_id,
+                    flavor,
+                    quantity,
+                };
+
                 println!(
                     "[{:?}] Received order: {} of {} from client {}",
                     addr, order.quantity, order.flavor, client_id
@@ -122,9 +124,6 @@ async fn handle_client(
                     }
                 }
             }
-            Err(e) => {
-                println!("[{:?}] Failed to deserialize order: {}", addr, e);
-            }
         }
         line.clear();
     }
@@ -147,11 +146,11 @@ async fn handle_ice_cream_maker(
         };
 
         // Send the order to the ice cream maker
-        let order_json = to_string(&order).expect("Failed to serialize order");
-        let order_json = format!("{}\n", order_json);
+        let order_yaml = serde_yaml::to_string(&order).expect("Failed to serialize order");
+        let order_yaml = format!("{}\n", order_yaml);
         reader
             .get_mut()
-            .write_all(order_json.as_bytes())
+            .write_all(order_yaml.as_bytes())
             .await
             .expect("Failed to send order");
 
