@@ -2,12 +2,12 @@ mod ice_cream;
 mod ice_cream_shop;
 
 use actix::prelude::*;
-use ice_cream_shop::{AddIceCream, AddOrder, IceCreamShop};
-use serde_json::from_slice;
+use ice_cream_shop::{AddIceCream, AddOrder, GetClient, IceCreamShop, RemoveOrder};
+use serde_json::{from_slice, to_string};
 use shared::order::Order;
 use std::net::SocketAddr;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::{TcpListener, TcpStream as TokioTcpStream};
 
 #[actix_rt::main]
 async fn main() {
@@ -50,6 +50,7 @@ async fn start_server(ice_cream_shop: Addr<IceCreamShop>) {
         let mut reader = BufReader::new(stream);
         let mut line = String::new();
         reader.read_line(&mut line).await.unwrap();
+        let ice_cream_shop = ice_cream_shop.clone();
         match line.trim() {
             "CLIENTE" => {
                 println!("[{:?}] Client connected", addr);
@@ -61,11 +62,15 @@ async fn start_server(ice_cream_shop: Addr<IceCreamShop>) {
                     .write_all(id_message.as_bytes())
                     .await
                     .unwrap();
-                handle_client(&ice_cream_shop, &mut reader, addr, client_id).await;
+                tokio::spawn(async move {
+                    handle_client(&ice_cream_shop, &mut reader, addr, client_id).await;
+                });
             }
             "HELADERO" => {
                 println!("[{:?}] Ice cream maker connected", addr);
-                handle_ice_cream_maker(&ice_cream_shop, &mut reader, addr).await;
+                tokio::spawn(async move {
+                    handle_ice_cream_maker(&ice_cream_shop, &mut reader, addr).await;
+                });
             }
             _ => {
                 println!("[{:?}] Unknown client type", addr);
@@ -76,7 +81,7 @@ async fn start_server(ice_cream_shop: Addr<IceCreamShop>) {
 
 async fn handle_client(
     ice_cream_shop: &Addr<IceCreamShop>,
-    reader: &mut BufReader<TcpStream>,
+    reader: &mut BufReader<TokioTcpStream>,
     addr: SocketAddr,
     client_id: usize,
 ) {
@@ -127,8 +132,34 @@ async fn handle_client(
 
 async fn handle_ice_cream_maker(
     ice_cream_shop: &Addr<IceCreamShop>,
-    reader: &mut BufReader<TcpStream>,
+    reader: &mut BufReader<TokioTcpStream>,
     addr: SocketAddr,
 ) {
-    // TODO: Implement ice cream maker handling
+    loop {
+        // Wait for an order to become available
+        let order = loop {
+            if let Some(order) = ice_cream_shop.send(RemoveOrder).await.unwrap() {
+                break order;
+            }
+
+            // If there are no orders, sleep for a short duration before checking again
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        };
+
+        // Send the order to the ice cream maker
+        let order_json = to_string(&order).expect("Failed to serialize order");
+        let order_json = format!("{}\n", order_json);
+        reader
+            .get_mut()
+            .write_all(order_json.as_bytes())
+            .await
+            .expect("Failed to send order");
+
+        // Wait for the response from the ice cream maker
+        let mut response = String::new();
+        reader
+            .read_line(&mut response)
+            .await
+            .expect("Failed to read response");
+    }
 }
