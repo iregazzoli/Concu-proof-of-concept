@@ -11,12 +11,19 @@ fn main() {
     request_order(&mut reader);
 
     loop {
+        println!("Waiting for order...");
         let order = get_order(&mut reader);
+
+        println!("\nReceived order: {} of {}", order.quantity, order.flavor,);
         process_order(&order);
+        println!("Finished order: {} of {}\n", order.quantity, order.flavor,);
+
         send_confirmation(&mut reader);
         request_order(&mut reader);
     }
 }
+
+// ... rest of the code remains the same ...
 
 fn connect_to_server() -> TcpStream {
     let mut stream =
@@ -24,6 +31,7 @@ fn connect_to_server() -> TcpStream {
     stream
         .write_all(b"HELADERO\n")
         .expect("Failed to send worker type");
+    println!("Connected to ice cream shop");
     stream
 }
 
