@@ -1,29 +1,22 @@
-use shared::order::Order;
 use std::fs::File;
-use std::io::BufReader;
 
 pub struct Client {
-    orders: Vec<Order>,
+    orders: Vec<(String, u32)>,
 }
 
 impl Client {
-    pub fn new(orders: Vec<Order>) -> Self {
+    pub fn new(orders: Vec<(String, u32)>) -> Self {
         Self { orders }
     }
 
-    pub fn place_order(&mut self) -> Option<Order> {
+    pub fn place_order(&mut self) -> Option<(String, u32)> {
         self.orders.pop()
     }
 
-    pub fn load_orders_from_file(file_path: &str) -> Vec<Order> {
+    pub fn load_orders_from_file(file_path: &str) -> Vec<(String, u32)> {
         let file = File::open(file_path).expect("Unable to open file");
-        let reader = BufReader::new(file);
-        serde_json::from_reader(reader).expect("Unable to parse JSON")
-    }
-
-    pub fn assign_id_to_orders(&mut self, id: Option<u32>) {
-        for order in &mut self.orders {
-            order.id = id;
-        }
+        let orders: Vec<(String, u32)> =
+            serde_yaml::from_reader(file).expect("Unable to parse YAML");
+        orders
     }
 }

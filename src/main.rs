@@ -1,7 +1,5 @@
 mod client;
 use client::Client;
-use serde_json::to_string;
-use shared::order::Order;
 use std::env;
 use std::io::prelude::*;
 use std::net::TcpStream;
@@ -18,9 +16,6 @@ fn main() {
     let mut client = Client::new(Client::load_orders_from_file(&orders_file_path));
     let stream = connect_to_server();
     let mut reader = std::io::BufReader::new(&stream);
-
-    let client_id = read_client_id(&mut reader) as u32;
-    client.assign_id_to_orders(Some(client_id));
 
     process_orders(&mut client, &mut reader);
     wait_for_ice_cream_maker(&mut reader);
@@ -42,20 +37,19 @@ fn wait_for_ice_cream_maker(reader: &mut std::io::BufReader<&TcpStream>) {
 }
 
 fn process_orders(client: &mut Client, reader: &mut std::io::BufReader<&TcpStream>) {
-    while let Some(order) = client.place_order() {
-        send_order(reader, &order);
+    while let Some((flavor, quantity)) = client.place_order() {
+        send_order(reader, &flavor, quantity);
         wait_for_response(reader);
     }
 }
 
-fn send_order(reader: &mut std::io::BufReader<&TcpStream>, order: &Order) {
-    let order_json = to_string(&order).expect("Failed to serialize order");
-    let order_json = format!("{}\n", order_json);
+fn send_order(reader: &mut std::io::BufReader<&TcpStream>, flavor: &str, quantity: u32) {
+    let order = format!("{} {}\n", flavor, quantity);
     reader
         .get_mut()
-        .write_all(order_json.as_bytes())
+        .write_all(order.as_bytes())
         .expect("Failed to send order");
-    println!("Order placed: {} of {}", order.quantity, order.flavor);
+    println!("Order placed: {} of {}", quantity, flavor);
 }
 
 fn wait_for_response(reader: &mut std::io::BufReader<&TcpStream>) {
@@ -76,15 +70,4 @@ fn connect_to_server() -> TcpStream {
         .expect("Failed to send client type to server");
 
     stream
-}
-
-fn read_client_id(reader: &mut std::io::BufReader<&TcpStream>) -> usize {
-    let mut response = String::new();
-    reader
-        .read_line(&mut response)
-        .expect("Failed to read response");
-    response
-        .trim()
-        .parse::<usize>()
-        .expect("Failed to parse client ID")
 }
