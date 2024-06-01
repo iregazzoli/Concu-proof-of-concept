@@ -3,11 +3,9 @@ mod ice_cream_shop;
 
 use actix::prelude::*;
 use ice_cream_shop::{AddIceCream, AddOrder, IceCreamShop, RemoveOrder};
-use serde_yaml;
 use shared::order::Order;
-use std::net::SocketAddr;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::net::{TcpListener, TcpStream as TokioTcpStream};
+use tokio::net::{TcpListener, TcpStream};
 
 #[actix_rt::main]
 async fn main() {
@@ -46,28 +44,29 @@ async fn start_server(ice_cream_shop: Addr<IceCreamShop>) {
     let mut next_client_id = 1;
 
     loop {
-        let (stream, addr) = listener.accept().await.unwrap();
+        let (stream, _) = listener.accept().await.unwrap();
         let mut reader = BufReader::new(stream);
         let mut line = String::new();
         reader.read_line(&mut line).await.unwrap();
         let ice_cream_shop = ice_cream_shop.clone();
         match line.trim() {
             "CLIENTE" => {
-                println!("[{:?}] Client connected", addr);
                 let client_id = next_client_id;
                 next_client_id += 1;
+                println!("[Client {}] Client connected", client_id);
+                let (tx, rx) = tokio::sync::mpsc::channel(100);
                 tokio::spawn(async move {
-                    handle_client(&ice_cream_shop, &mut reader, addr, client_id).await;
+                    handle_client(&ice_cream_shop, &mut reader, client_id, tx, rx).await;
                 });
             }
             "HELADERO" => {
-                println!("[{:?}] Ice cream maker connected", addr);
+                println!("[Ice cream maker] Ice cream maker connected");
                 tokio::spawn(async move {
-                    handle_ice_cream_maker(&ice_cream_shop, &mut reader, addr).await;
+                    handle_ice_cream_maker(&ice_cream_shop, &mut reader).await;
                 });
             }
             _ => {
-                println!("[{:?}] Unknown client type", addr);
+                println!("[Unknown] Unknown client type");
             }
         }
     }
@@ -75,9 +74,10 @@ async fn start_server(ice_cream_shop: Addr<IceCreamShop>) {
 
 async fn handle_client(
     ice_cream_shop: &Addr<IceCreamShop>,
-    reader: &mut BufReader<TokioTcpStream>,
-    addr: SocketAddr,
+    reader: &mut BufReader<TcpStream>,
     client_id: u32,
+    tx: tokio::sync::mpsc::Sender<String>,
+    mut rx: tokio::sync::mpsc::Receiver<String>,
 ) {
     let mut line = String::new();
     while reader.read_line(&mut line).await.unwrap() > 0 {
@@ -85,24 +85,19 @@ async fn handle_client(
         if parts.len() == 2 {
             let flavor = parts[0].to_string();
             if let Ok(quantity) = parts[1].parse::<u32>() {
-                let order = Order {
-                    id: client_id,
-                    flavor,
-                    quantity,
-                };
+                let order = Order::new(flavor, quantity, tx.clone());
 
                 println!(
-                    "[{:?}] Received order: {} of {} from client {}",
-                    addr, order.quantity, order.flavor, client_id
+                    "[Client {}] Received order: {} of {}",
+                    client_id,
+                    order.quantity(),
+                    order.flavor()
                 );
 
                 let res = ice_cream_shop.send(AddOrder { order }).await;
                 match res {
                     Ok(_) => {
-                        println!(
-                            "[{:?}] Order from client {} enqueue successfully \n",
-                            addr, client_id
-                        );
+                        println!("[Client {}] Order enqueue successfully \n", client_id);
                         let response = "Order processed successfully\n";
                         reader
                             .get_mut()
@@ -111,10 +106,7 @@ async fn handle_client(
                             .unwrap();
                     }
                     Err(_) => {
-                        println!(
-                            "[{:?}] Failed to process order from client {} \n",
-                            addr, client_id
-                        );
+                        println!("[Client {}] Failed to process order \n", client_id);
                         let response = "Failed to process order\n";
                         reader
                             .get_mut()
@@ -127,12 +119,36 @@ async fn handle_client(
         }
         line.clear();
     }
+
+    while let Some(message) = rx.recv().await {
+        println!(
+            "[Client {}] Received message from channel: {}",
+            client_id, message
+        ); // Debug print
+
+        let parts: Vec<&str> = message.split(',').collect();
+        if parts.len() == 2 {
+            let flavor = parts[0];
+            let quantity = parts[1];
+
+            println!(
+                "[Client {}] Order completed: {} of {}",
+                client_id, quantity, flavor
+            );
+
+            let response = format!("{},{}\n", quantity, flavor);
+            reader
+                .get_mut()
+                .write_all(response.as_bytes())
+                .await
+                .unwrap();
+        }
+    }
 }
 
 async fn handle_ice_cream_maker(
     ice_cream_shop: &Addr<IceCreamShop>,
-    reader: &mut BufReader<TokioTcpStream>,
-    addr: SocketAddr,
+    reader: &mut BufReader<TcpStream>,
 ) {
     loop {
         // Wait for an order to become available
@@ -141,16 +157,15 @@ async fn handle_ice_cream_maker(
                 break order;
             }
 
-            // If there are no orders, sleep for a short duration before checking again
+            //TODO Remove Busy Wait later
             tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
         };
 
-        // Send the order to the ice cream maker
-        let order_yaml = serde_yaml::to_string(&order).expect("Failed to serialize order");
-        let order_yaml = format!("{}\n", order_yaml);
+        // Send the order quantity to the ice cream maker
+        let order_quantity = format!("{}\n", order.quantity());
         reader
             .get_mut()
-            .write_all(order_yaml.as_bytes())
+            .write_all(order_quantity.as_bytes())
             .await
             .expect("Failed to send order");
 
@@ -160,5 +175,10 @@ async fn handle_ice_cream_maker(
             .read_line(&mut response)
             .await
             .expect("Failed to read response");
+
+        // Notify the client
+        let message = format!("{},{}", order.flavor(), order.quantity());
+        println!("Sending message to client: {}", message); // Debug print
+        order.tx().send(message).await.unwrap();
     }
 }

@@ -3,22 +3,17 @@ use actix::prelude::*;
 use shared::order::Order;
 use std::collections::HashMap;
 use std::collections::VecDeque;
-use std::net::TcpStream;
-use std::sync::{Arc, Mutex};
 
 pub struct IceCreamShop {
     ice_creams: HashMap<String, Addr<IceCream>>,
     orders: VecDeque<Order>,
-    clients: HashMap<u32, Arc<Mutex<TcpStream>>>,
 }
 
 impl IceCreamShop {
-    #[allow(dead_code)] //pongo esto pq rust es imbecil y piensa q no lo uso a pesar de q lo hago en otro archivo, esta materia deberia ser en c++ y no en este lenguaje inutil.
     pub fn new() -> Self {
         IceCreamShop {
             ice_creams: HashMap::new(),
             orders: VecDeque::new(),
-            clients: HashMap::new(),
         }
     }
 }
@@ -43,19 +38,6 @@ pub struct RequestIceCream {
 pub struct AddIceCream {
     pub flavor: String,
     pub quantity: u32,
-}
-
-#[derive(Message)]
-#[rtype(result = "()")]
-pub struct AddClient {
-    pub id: u32,
-    pub stream: Arc<Mutex<TcpStream>>,
-}
-
-#[derive(Message)]
-#[rtype(result = "Arc<Mutex<TcpStream>>")]
-pub struct GetClient {
-    pub id: u32,
 }
 
 impl Handler<RequestIceCream> for IceCreamShop {
@@ -89,22 +71,6 @@ impl Handler<AddIceCream> for IceCreamShop {
     fn handle(&mut self, msg: AddIceCream, _ctx: &mut Self::Context) {
         let ice_cream = IceCream::create(|_| IceCream::new(msg.quantity));
         self.ice_creams.insert(msg.flavor, ice_cream);
-    }
-}
-
-impl Handler<AddClient> for IceCreamShop {
-    type Result = ();
-
-    fn handle(&mut self, msg: AddClient, _ctx: &mut Self::Context) {
-        self.clients.insert(msg.id, msg.stream);
-    }
-}
-
-impl Handler<GetClient> for IceCreamShop {
-    type Result = Arc<Mutex<TcpStream>>;
-
-    fn handle(&mut self, msg: GetClient, _ctx: &mut Self::Context) -> Self::Result {
-        self.clients.get(&msg.id).unwrap().clone()
     }
 }
 
