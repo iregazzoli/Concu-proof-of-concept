@@ -415,14 +415,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "shared"
-version = "0.1.0"
-dependencies = [
- "serde",
- "tokio",
-]
-
-[[package]]
 name = "signal-hook-registry"
 version = "1.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -682,6 +674,5 @@ dependencies = [
  "actix",
  "actix-rt",
  "serde_json",
- "shared",
  "tokio",
 ]
