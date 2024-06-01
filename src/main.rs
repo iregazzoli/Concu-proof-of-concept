@@ -1,5 +1,3 @@
-use serde_json::from_slice;
-use shared::order::Order;
 use std::io::prelude::*;
 use std::net::TcpStream;
 
@@ -7,23 +5,21 @@ fn main() {
     let stream = connect_to_server();
     let mut reader = std::io::BufReader::new(&stream);
 
-    // Request an order as soon as the worker connects
-    request_order(&mut reader);
-
     loop {
-        println!("Waiting for order...");
-        let order = get_order(&mut reader);
-
-        println!("\nReceived order: {} of {}", order.quantity, order.flavor,);
-        process_order(&order);
-        println!("Finished order: {} of {}\n", order.quantity, order.flavor,);
-
-        send_confirmation(&mut reader);
+        // Request an order at the start of the loop
         request_order(&mut reader);
+
+        println!("Waiting for order...");
+        let quantity = get_order_quantity(&mut reader);
+
+        println!("\nReceived order: {}", quantity);
+        process_order(quantity);
+        println!("Finished order: {}\n", quantity);
+
+        // Send confirmation after processing the order
+        send_confirmation(&mut reader);
     }
 }
-
-// ... rest of the code remains the same ...
 
 fn connect_to_server() -> TcpStream {
     let mut stream =
@@ -42,16 +38,19 @@ fn request_order(reader: &mut std::io::BufReader<&TcpStream>) {
         .expect("Failed to request order");
 }
 
-fn get_order(reader: &mut std::io::BufReader<&TcpStream>) -> Order {
-    let mut order_json = String::new();
+fn get_order_quantity(reader: &mut std::io::BufReader<&TcpStream>) -> u32 {
+    let mut quantity_str = String::new();
     reader
-        .read_line(&mut order_json)
-        .expect("Failed to read order");
-    from_slice(order_json.trim().as_bytes()).expect("Failed to parse order")
+        .read_line(&mut quantity_str)
+        .expect("Failed to read order quantity");
+    quantity_str
+        .trim()
+        .parse()
+        .expect("Failed to parse order quantity")
 }
 
-fn process_order(order: &Order) {
-    let sleep_duration = std::time::Duration::from_secs(order.quantity as u64);
+fn process_order(quantity: u32) {
+    let sleep_duration = std::time::Duration::from_secs(quantity as u64);
     std::thread::sleep(sleep_duration);
 }
 
