@@ -9,7 +9,6 @@ edition = "2021"
 actix = "0.11.1"
 actix-rt = "2.2.0"
 tokio = { version = "1", features = ["full"] }
-shared = { path = "../shared" }
 serde_yaml = "0.8.17"
 
 
