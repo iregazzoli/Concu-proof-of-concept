@@ -2,8 +2,10 @@ mod client;
 use client::Client;
 use std::env;
 use std::io::prelude::*;
+use std::io::BufReader;
 use std::net::TcpStream;
 
+//run with cargo run orders1.yaml
 fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() != 2 {
@@ -18,22 +20,29 @@ fn main() {
     let mut reader = std::io::BufReader::new(&stream);
 
     process_orders(&mut client, &mut reader);
-    wait_for_ice_cream_maker(&mut reader);
+    wait_for_orders(&mut client, &mut reader);
     println!("All orders have been successfully placed!");
 
     // Close the stream to disconnect
     drop(stream);
 }
 
-fn wait_for_ice_cream_maker(reader: &mut std::io::BufReader<&TcpStream>) {
+fn wait_for_orders(client: &mut Client, reader: &mut BufReader<&TcpStream>) {
     println!("\nWaiting to be served 🍦\n");
     let mut response = String::new();
-    while response.trim() != "HELADERO CONNECTED" {
+    while !client.all_orders_received() {
         reader
             .read_line(&mut response)
             .expect("Failed to read response");
+        let parts: Vec<&str> = response.trim().split(',').collect();
+        if parts.len() == 2 {
+            let flavor = parts[0].to_string();
+            let quantity = parts[1].parse().expect("Failed to parse quantity");
+            client.order_received((flavor, quantity));
+        }
+        response.clear();
     }
-    println!("Ice cream maker connected");
+    println!("All orders have been successfully placed!");
 }
 
 fn process_orders(client: &mut Client, reader: &mut std::io::BufReader<&TcpStream>) {
