@@ -1,9 +1,10 @@
 mod ice_cream;
 mod ice_cream_shop;
+mod order;
 
 use actix::prelude::*;
 use ice_cream_shop::{AddIceCream, AddOrder, IceCreamShop, RemoveOrder};
-use shared::order::Order;
+use order::Order;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 

@@ -1,6 +1,6 @@
 use crate::ice_cream::{IceCream, RequestFlavor};
+use crate::order::Order;
 use actix::prelude::*;
-use shared::order::Order;
 use std::collections::HashMap;
 use std::collections::VecDeque;
 
