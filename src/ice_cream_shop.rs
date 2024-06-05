@@ -3,10 +3,53 @@ use crate::order::Order;
 use actix::prelude::*;
 use std::collections::HashMap;
 use std::collections::VecDeque;
+use std::sync::{Arc, Mutex};
+use tokio::net::TcpStream;
+
+use tokio::io::AsyncWriteExt;
+
+pub struct ClientActor {
+    stream: Arc<Mutex<TcpStream>>,
+}
+
+impl Actor for ClientActor {
+    type Context = Context<Self>;
+}
+
+impl ClientActor {
+    pub fn new(stream: Arc<Mutex<TcpStream>>) -> Self {
+        ClientActor { stream }
+    }
+}
+
+pub struct SendMessageToClient {
+    pub message: String,
+}
+
+impl Message for SendMessageToClient {
+    type Result = Result<(), std::io::Error>;
+}
+
+impl Handler<SendMessageToClient> for ClientActor {
+    type Result = ResponseActFuture<Self, Result<(), std::io::Error>>;
+
+    fn handle(&mut self, msg: SendMessageToClient, _: &mut Self::Context) -> Self::Result {
+        let stream = Arc::clone(&self.stream);
+        let message = msg.message;
+        Box::pin(
+            async move {
+                let mut stream = stream.lock().unwrap();
+                stream.write_all(message.as_bytes()).await
+            }
+            .into_actor(self),
+        )
+    }
+}
 
 pub struct IceCreamShop {
     ice_creams: HashMap<String, Addr<IceCream>>,
     orders: VecDeque<Order>,
+    clients: HashMap<u32, Addr<ClientActor>>,
 }
 
 impl IceCreamShop {
@@ -14,6 +57,7 @@ impl IceCreamShop {
         IceCreamShop {
             ice_creams: HashMap::new(),
             orders: VecDeque::new(),
+            clients: HashMap::new(),
         }
     }
 }
@@ -97,5 +141,41 @@ impl Handler<RemoveOrder> for IceCreamShop {
 
     fn handle(&mut self, _msg: RemoveOrder, _ctx: &mut Self::Context) -> Self::Result {
         self.orders.pop_front()
+    }
+}
+
+#[derive(Message)]
+#[rtype(result = "()")]
+pub struct AddClient {
+    pub id: u32,
+    pub actor: Addr<ClientActor>,
+}
+
+impl Handler<AddClient> for IceCreamShop {
+    type Result = ();
+
+    fn handle(&mut self, msg: AddClient, _ctx: &mut Self::Context) {
+        self.clients.insert(msg.id, msg.actor);
+    }
+}
+
+#[derive(Message)]
+#[rtype(result = "()")]
+pub struct SendClientMessage {
+    pub id: u32,
+    pub message: String,
+}
+
+impl Handler<SendClientMessage> for IceCreamShop {
+    type Result = ();
+
+    fn handle(&mut self, msg: SendClientMessage, _ctx: &mut Self::Context) {
+        if let Some(client) = self.clients.get(&msg.id) {
+            let _ = client.do_send(SendMessageToClient {
+                message: msg.message,
+            });
+        } else {
+            println!("Failed to send message to client: client not found");
+        }
     }
 }

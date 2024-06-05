@@ -1,15 +1,15 @@
 pub struct Order {
     flavor: String,
     quantity: u32,
-    tx: tokio::sync::mpsc::Sender<String>,
+    client_id: u32,
 }
 
 impl Order {
-    pub fn new(flavor: String, quantity: u32, tx: tokio::sync::mpsc::Sender<String>) -> Self {
+    pub fn new(flavor: String, quantity: u32, client_id: u32) -> Self {
         Self {
             flavor,
             quantity,
-            tx,
+            client_id,
         }
     }
 
@@ -21,7 +21,7 @@ impl Order {
         self.quantity
     }
 
-    pub fn tx(&self) -> &tokio::sync::mpsc::Sender<String> {
-        &self.tx
+    pub fn client_id(&self) -> u32 {
+        self.client_id
     }
 }
